@@ -1,60 +1,107 @@
-<p align="center"><code>npm i -g @openai/codex</code><br />or <code>brew install --cask codex</code></p>
-<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
-<p align="center">
-  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
-</p>
-</br>
-If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
-</br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
-</br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
+# lcodex (Leon Edition)
 
----
+`lcodex` is Leon's independently maintained edition of Codex.
 
-## Quickstart
+This repo keeps two goals in balance:
 
-### Installing and running Codex CLI
+1. Run fast and safely for daily personal/team use.
+2. Stay syncable with `openai/codex` so upstream improvements can be adopted.
 
-Install globally with your preferred package manager:
+## What Changed In Leon Edition
 
-```shell
-# Install using npm
-npm install -g @openai/codex
+Compared with the upstream defaults, Leon edition adds a practical local workflow:
+
+1. Independent repo strategy (`origin` for `lcodex`, `upstream` for official Codex).
+2. Local command namespace (`lccodex`) to avoid conflicts with system `codex`.
+3. Dual runtime modes:
+- default mode shares `~/.codex`.
+- isolated mode (`-l`) uses separate home (for example `~/.lcodex`).
+4. Upstream sync script for daily maintenance.
+5. Leon-focused docs for setup, update flow, and contribution strategy.
+
+## Why This Is Better
+
+1. No command conflict: official `codex` and local `lcodex` can coexist.
+2. Lower risk: isolated mode allows safe experiments without polluting daily state.
+3. Faster operation: standardized commands reduce setup friction.
+4. Sustainable maintenance: upstream sync workflow avoids long-term divergence.
+5. Better contribution path: you can still open clean PRs to `openai/codex`.
+
+## Quick Start
+
+### 1) Build from source
+
+```bash
+cd codex-rs
+cargo build --release --bin codex
 ```
 
-```shell
-# Install using Homebrew
-brew install --cask codex
+Binary path:
+
+```text
+codex-rs/target/release/codex
 ```
 
-Then simply run `codex` to get started.
+### 2) Recommended wrapper command
 
-<details>
-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+Use a shell wrapper (`lccodex`) instead of replacing system `codex`.
 
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
+Example usage:
 
-- macOS
-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
+```bash
+lccodex --version
+lccodex
+lccodex -l
+```
 
-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
+### 3) Sync upstream regularly
 
-</details>
+```bash
+./scripts/lcodex-sync-upstream.sh
+```
 
-### Using Codex with your ChatGPT plan
+## Daily Workflow Commands
 
-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Team, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
+```bash
+# sync official updates
+./scripts/lcodex-sync-upstream.sh
 
-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
+# rebuild local binary
+cd codex-rs && cargo build --release --bin codex
 
-## Docs
+# run leon edition (shared config)
+lccodex
 
-- [**Codex Documentation**](https://developers.openai.com/codex)
-- [**Contributing**](./docs/contributing.md)
-- [**Installing & building**](./docs/install.md)
-- [**Open source fund**](./docs/open-source-fund.md)
+# run leon edition (isolated config)
+lccodex -l
+```
 
-This repository is licensed under the [Apache-2.0 License](LICENSE).
+## Docs Index
+
+1. [Leon Edition Updates and Advantages](./docs/leon-edition-updates.md)
+2. [Leon Usage Flow and Commands](./docs/leon-usage-flow.md)
+3. [lcodex Development and Usage](./docs/lcodex-development-and-usage.md)
+4. [lcodex Repository Note](./LCODEX.md)
+5. [Contributing](./docs/contributing.md)
+
+## Upstream PR Strategy
+
+Use two branch categories:
+
+1. `feature/*` for Leon-only product evolution.
+2. `pr/*` for changes intended to be proposed upstream.
+
+Recommended flow:
+
+```bash
+git checkout main
+./scripts/lcodex-sync-upstream.sh
+git checkout -b pr/<topic>
+```
+
+Then implement, test, and submit a PR to `openai/codex`.
+
+## License
+
+This repository follows the same license model as the base project.
+See [LICENSE](./LICENSE).

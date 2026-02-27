@@ -1,44 +1,47 @@
 # lcodex Development and Usage
 
-This document defines the recommended workflow for running `lcodex` as an
-independent project while still syncing upstream changes from
-`openai/codex`.
+This document describes the engineering workflow for maintaining Leon's
+`lcodex` while continuously inheriting upstream improvements.
 
-## Repository Model
+## Positioning
 
-- `origin`: your own `lcodex` repository
-- `upstream`: `https://github.com/openai/codex.git`
+`lcodex` is an independent product repository, not a disposable local fork.
 
-Current local setup already includes:
+- Product evolution happens in `origin` (`lcodex`).
+- Upstream sync comes from `openai/codex` via `upstream` remote.
 
-- `upstream` -> `https://github.com/openai/codex.git`
+## Remote Strategy
 
-Set your own `origin` after creating your `lcodex` remote:
+Expected remote layout:
 
 ```bash
-git remote add origin <your-lcodex-repo-url>
-git push -u origin main
+git remote -v
 ```
 
-## Local Build
+```text
+origin   https://github.com/<you>/lcodex.git
+upstream https://github.com/openai/codex.git
+```
 
-From repo root:
+## Build Strategy
+
+### Release build
 
 ```bash
 cd codex-rs
 cargo build --release --bin codex
 ```
 
-Binary path:
+### Debug build (faster iteration)
 
-```text
-codex-rs/target/release/codex
+```bash
+cd codex-rs
+cargo build --bin codex
 ```
 
-## Recommended Shell Wrapper
+## Runtime Strategy
 
-Use a wrapper command (for example `lccodex`) to avoid conflicts with system
-`codex`:
+Use wrapper command `lccodex` to avoid conflicting with official `codex`.
 
 ```bash
 lccodex --version
@@ -46,24 +49,18 @@ lccodex
 lccodex -l
 ```
 
-- default mode: shares `~/.codex`
-- `-l` mode: isolated home (for example `~/.lcodex`)
+- default mode: shared profile (`~/.codex`)
+- `-l` mode: isolated profile (`~/.lcodex`)
 
-## Upstream Sync Workflow
+## Upstream Sync Strategy
 
-Use the helper script:
+Default sync command:
 
 ```bash
 ./scripts/lcodex-sync-upstream.sh
 ```
 
-What it does:
-
-1. fetch from `upstream`
-2. checkout local `main`
-3. fast-forward merge from `upstream/main`
-
-If fast-forward is not possible, resolve manually:
+Manual fallback:
 
 ```bash
 git fetch upstream
@@ -71,9 +68,13 @@ git checkout main
 git merge upstream/main
 ```
 
-## PR Workflow to Official Codex
+## Branch Strategy
 
-Keep official contributions isolated in dedicated branches:
+1. `main`: stable Leon baseline
+2. `feature/*`: Leon-specific work
+3. `pr/*`: upstream-targeted changes
+
+## Contribution Path to Official Codex
 
 ```bash
 git checkout main
@@ -81,12 +82,28 @@ git checkout main
 git checkout -b pr/<topic>
 ```
 
-Then implement changes, run tests, and open PR from your branch to
+Implement only the upstream-relevant delta, then submit PR to
 `openai/codex`.
 
-## Daily Workflow
+## Daily Engineering Checklist
 
-1. Sync upstream regularly.
-2. Build and run locally via `lccodex`.
-3. Push product-specific features to your own `origin`.
-4. For upstream-worthy fixes, use `pr/*` branches.
+```bash
+# sync
+./scripts/lcodex-sync-upstream.sh
+
+# build
+cd codex-rs && cargo build --release --bin codex
+
+# run
+lccodex
+
+# isolated test run
+lccodex -l
+```
+
+## Related Docs
+
+1. `README.md`
+2. `docs/leon-edition-updates.md`
+3. `docs/leon-usage-flow.md`
+4. `LCODEX.md`

@@ -1,23 +1,32 @@
 # lcodex
 
-`lcodex` is an independently managed Codex-based project.
+`lcodex` is Leon's independently managed Codex edition.
 
-Primary guide:
+## Core docs
 
-- `docs/lcodex-development-and-usage.md`
+1. `README.md`
+2. `docs/leon-edition-updates.md`
+3. `docs/leon-usage-flow.md`
+4. `docs/lcodex-development-and-usage.md`
 
-Quick commands:
+## Quick commands
 
 ```bash
-# Sync latest upstream main into local main
+# sync upstream
 ./scripts/lcodex-sync-upstream.sh
 
-# Build CLI
+# build release binary
 cd codex-rs
 cargo build --release --bin codex
+
+# run leon edition
+lccodex
+
+# run isolated mode
+lccodex -l
 ```
 
-Recommended remotes:
+## Remotes
 
-- `origin`: your own `lcodex` repository
+- `origin`: your `lcodex` repository
 - `upstream`: `https://github.com/openai/codex.git`
