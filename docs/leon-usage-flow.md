@@ -58,7 +58,7 @@ cargo build --bin codex
 ### Shared profile mode (default)
 
 ```bash
-lccodex
+lcodex
 ```
 
 Uses the default codex home (`~/.codex`).
@@ -66,7 +66,7 @@ Uses the default codex home (`~/.codex`).
 ### Isolated profile mode
 
 ```bash
-lccodex -l
+lcodex -l
 ```
 
 Uses dedicated Leon profile home (for example `~/.lcodex`).
@@ -81,7 +81,7 @@ Uses dedicated Leon profile home (for example `~/.lcodex`).
 cd codex-rs && cargo build --release --bin codex
 
 # verify
-lccodex --version
+lcodex --version
 ```
 
 ## 5) Feature development flow
@@ -118,10 +118,10 @@ git status
 cd codex-rs && cargo build --release --bin codex
 
 # run
-lccodex
+lcodex
 
 # isolated run
-lccodex -l
+lcodex -l
 ```
 
 ## 8) Common troubleshooting
@@ -133,12 +133,12 @@ iteration, then release build when ready.
 
 ### Command conflict with system codex
 
-Use `lccodex` wrapper only. Do not overwrite `/opt/homebrew/bin/codex`.
+Use `lcodex` wrapper only. Do not overwrite `/opt/homebrew/bin/codex`.
 
 ### Want a clean test profile
 
 Use isolated mode:
 
 ```bash
-lccodex -l
+lcodex -l
 ```

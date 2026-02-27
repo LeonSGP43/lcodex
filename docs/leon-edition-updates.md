@@ -21,7 +21,7 @@ From "single fork mindset" to "independent product repo + upstream sync".
 
 From directly using `codex` to a dedicated command namespace:
 
-- `lccodex`: Leon local edition runtime command.
+- `lcodex`: Leon local edition runtime command.
 
 This avoids overriding or breaking system-installed official `codex`.
 
@@ -98,8 +98,8 @@ knowledge.
 cd codex-rs && cargo build --release --bin codex
 
 # run shared config
-lccodex
+lcodex
 
 # run isolated config
-lccodex -l
+lcodex -l
 ```

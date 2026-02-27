@@ -41,12 +41,12 @@ cargo build --bin codex
 
 ## Runtime Strategy
 
-Use wrapper command `lccodex` to avoid conflicting with official `codex`.
+Use wrapper command `lcodex` to avoid conflicting with official `codex`.
 
 ```bash
-lccodex --version
-lccodex
-lccodex -l
+lcodex --version
+lcodex
+lcodex -l
 ```
 
 - default mode: shared profile (`~/.codex`)
@@ -95,10 +95,10 @@ Implement only the upstream-relevant delta, then submit PR to
 cd codex-rs && cargo build --release --bin codex
 
 # run
-lccodex
+lcodex
 
 # isolated test run
-lccodex -l
+lcodex -l
 ```
 
 ## Related Docs

@@ -20,10 +20,10 @@ cd codex-rs
 cargo build --release --bin codex
 
 # run leon edition
-lccodex
+lcodex
 
 # run isolated mode
-lccodex -l
+lcodex -l
 ```
 
 ## Remotes

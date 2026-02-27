@@ -12,7 +12,7 @@ This repo keeps two goals in balance:
 Compared with the upstream defaults, Leon edition adds a practical local workflow:
 
 1. Independent repo strategy (`origin` for `lcodex`, `upstream` for official Codex).
-2. Local command namespace (`lccodex`) to avoid conflicts with system `codex`.
+2. Local command namespace (`lcodex`) to avoid conflicts with system `codex`.
 3. Dual runtime modes:
 - default mode shares `~/.codex`.
 - isolated mode (`-l`) uses separate home (for example `~/.lcodex`).
@@ -44,14 +44,14 @@ codex-rs/target/release/codex
 
 ### 2) Recommended wrapper command
 
-Use a shell wrapper (`lccodex`) instead of replacing system `codex`.
+Use a shell wrapper (`lcodex`) instead of replacing system `codex`.
 
 Example usage:
 
 ```bash
-lccodex --version
-lccodex
-lccodex -l
+lcodex --version
+lcodex
+lcodex -l
 ```
 
 ### 3) Sync upstream regularly
@@ -70,10 +70,10 @@ lccodex -l
 cd codex-rs && cargo build --release --bin codex
 
 # run leon edition (shared config)
-lccodex
+lcodex
 
 # run leon edition (isolated config)
-lccodex -l
+lcodex -l
 ```
 
 ## Docs Index
