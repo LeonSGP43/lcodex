@@ -3797,6 +3797,11 @@ impl ChatWidget {
             SlashCommand::Status => {
                 self.add_status_output();
             }
+            SlashCommand::Hotkey => {
+                self.app_event_tx.send(AppEvent::HotkeyControl {
+                    args: String::new(),
+                });
+            }
             SlashCommand::DebugConfig => {
                 self.add_debug_config_output();
             }
@@ -3992,6 +3997,18 @@ impl ChatWidget {
                     .send(AppEvent::BeginWindowsSandboxGrantReadRoot {
                         path: prepared_args,
                     });
+                self.bottom_pane.drain_pending_submission_state();
+            }
+            SlashCommand::Hotkey => {
+                let args = if trimmed.is_empty() {
+                    String::new()
+                } else {
+                    self.bottom_pane
+                        .prepare_inline_args_submission(false)
+                        .map(|(prepared_args, _prepared_elements)| prepared_args)
+                        .unwrap_or(args)
+                };
+                self.app_event_tx.send(AppEvent::HotkeyControl { args });
                 self.bottom_pane.drain_pending_submission_state();
             }
             _ => self.dispatch_command(cmd),

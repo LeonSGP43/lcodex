@@ -139,6 +139,11 @@ pub(crate) enum AppEvent {
     /// Result of computing a `/diff` command.
     DiffResult(String),
 
+    /// Handle `/hotkey ...` control commands.
+    HotkeyControl {
+        args: String,
+    },
+
     /// Open the app link view in the bottom pane.
     OpenAppLink {
         app_id: String,

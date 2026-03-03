@@ -4965,6 +4965,34 @@ async fn slash_resume_opens_picker() {
 }
 
 #[tokio::test]
+async fn slash_hotkey_without_args_opens_hotkey_control() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+
+    chat.dispatch_command(SlashCommand::Hotkey);
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HotkeyControl { args }) if args.is_empty()
+    );
+}
+
+#[tokio::test]
+async fn slash_hotkey_with_args_forwards_args() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
+
+    chat.dispatch_command_with_args(
+        SlashCommand::Hotkey,
+        "bind ctrl+1 takeover".to_string(),
+        Vec::new(),
+    );
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HotkeyControl { args }) if args == "bind ctrl+1 takeover"
+    );
+}
+
+#[tokio::test]
 async fn slash_fork_requests_current_fork() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(None).await;
 

@@ -21,6 +21,9 @@ use crate::history_cell;
 use crate::history_cell::HistoryCell;
 #[cfg(not(debug_assertions))]
 use crate::history_cell::UpdateAvailableHistoryCell;
+use crate::hotkeys;
+use crate::hotkeys::HotkeyControlCommand;
+use crate::hotkeys::HotkeyManager;
 use crate::model_migration::ModelMigrationOutcome;
 use crate::model_migration::migration_copy_for_models;
 use crate::model_migration::run_model_migration_prompt;
@@ -120,6 +123,16 @@ const THREAD_EVENT_CHANNEL_CAPACITY: usize = 32768;
 /// Smooth-mode streaming drains one line per tick, so this interval controls
 /// perceived typing speed for non-backlogged output.
 const COMMIT_ANIMATION_TICK: Duration = tui::TARGET_FRAME_INTERVAL;
+
+fn truncate_for_history(text: &str, max_chars: usize) -> String {
+    let mut chars = text.chars();
+    let collected: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{collected}...")
+    } else {
+        collected
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct AppExitInfo {
@@ -648,6 +661,7 @@ pub(crate) struct App {
     has_emitted_history_lines: bool,
 
     pub(crate) enhanced_keys_supported: bool,
+    hotkeys: HotkeyManager,
 
     /// Controls the animation thread that sends CommitTick events.
     pub(crate) commit_anim_running: Arc<AtomicBool>,
@@ -1707,6 +1721,7 @@ impl App {
             .maybe_prompt_windows_sandbox_enable(should_prompt_windows_sandbox_nux_at_startup);
 
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
+        let hotkeys_load = HotkeyManager::load(config.codex_home.as_path());
         #[cfg(not(debug_assertions))]
         let upgrade_version = crate::updates::get_upgrade_version(&config);
 
@@ -1724,6 +1739,7 @@ impl App {
             runtime_sandbox_policy_override: None,
             file_search,
             enhanced_keys_supported,
+            hotkeys: hotkeys_load.manager,
             transcript_cells: Vec::new(),
             overlay: None,
             deferred_history_lines: Vec::new(),
@@ -1747,6 +1763,13 @@ impl App {
             primary_session_configured: None,
             pending_primary_events: VecDeque::new(),
         };
+
+        for warning in hotkeys_load.warnings {
+            app.chat_widget
+                .add_to_history(history_cell::new_warning_event(format!(
+                    "Hotkeys: {warning}"
+                )));
+        }
 
         // On startup, if Agent mode (workspace-write) or ReadOnly is active, warn about world-writable dirs on Windows.
         #[cfg(target_os = "windows")]
@@ -2190,6 +2213,9 @@ impl App {
                     "D I F F".to_string(),
                 ));
                 tui.frame_requester().schedule_frame();
+            }
+            AppEvent::HotkeyControl { args } => {
+                self.handle_hotkey_control(args);
             }
             AppEvent::OpenAppLink {
                 app_id,
@@ -3513,7 +3539,195 @@ impl App {
         tui.frame_requester().schedule_frame();
     }
 
+    fn handle_hotkey_control(&mut self, args: String) {
+        match hotkeys::parse_control_command(&args) {
+            Ok(HotkeyControlCommand::Help) => {
+                self.chat_widget
+                    .add_info_message(HotkeyManager::help_text().to_string(), None);
+            }
+            Ok(HotkeyControlCommand::List) => {
+                self.chat_widget
+                    .add_info_message(self.hotkeys.render_summary(), None);
+            }
+            Ok(HotkeyControlCommand::Reload) => {
+                let loaded = HotkeyManager::load(self.config.codex_home.as_path());
+                self.hotkeys = loaded.manager;
+                if loaded.warnings.is_empty() {
+                    self.chat_widget.add_info_message(
+                        "Reloaded hotkeys from disk.".to_string(),
+                        Some(self.hotkeys.render_summary()),
+                    );
+                } else {
+                    self.chat_widget.add_info_message(
+                        "Reloaded hotkeys with warnings.".to_string(),
+                        Some(loaded.warnings.join("\n")),
+                    );
+                }
+            }
+            Ok(HotkeyControlCommand::Reset) => {
+                self.hotkeys.reset_to_defaults();
+                if let Err(err) = self.hotkeys.save() {
+                    self.chat_widget.add_error_message(err);
+                    return;
+                }
+                self.chat_widget
+                    .add_info_message("Reset hotkeys to defaults.".to_string(), None);
+            }
+            Ok(HotkeyControlCommand::Bind { key, action }) => {
+                let key_display = key.to_string();
+                let action_display = action.clone();
+                self.hotkeys.bind(key, action);
+                if let Err(err) = self.hotkeys.save() {
+                    self.chat_widget.add_error_message(err);
+                    return;
+                }
+                self.chat_widget
+                    .add_info_message(format!("Bound {key_display} -> {action_display}."), None);
+            }
+            Ok(HotkeyControlCommand::Unbind { key }) => {
+                let key_display = key.to_string();
+                let removed = self.hotkeys.unbind(&key);
+                if let Err(err) = self.hotkeys.save() {
+                    self.chat_widget.add_error_message(err);
+                    return;
+                }
+                if removed {
+                    self.chat_widget
+                        .add_info_message(format!("Removed binding {key_display}."), None);
+                } else {
+                    self.chat_widget
+                        .add_info_message(format!("No binding existed for {key_display}."), None);
+                }
+            }
+            Ok(HotkeyControlCommand::Hook { action, command }) => {
+                self.hotkeys.set_hook(action.clone(), command.clone());
+                if let Err(err) = self.hotkeys.save() {
+                    self.chat_widget.add_error_message(err);
+                    return;
+                }
+                self.chat_widget
+                    .add_info_message(format!("Set hook for action '{action}'."), Some(command));
+            }
+            Ok(HotkeyControlCommand::Unhook { action }) => {
+                let removed = self.hotkeys.remove_hook(&action);
+                if let Err(err) = self.hotkeys.save() {
+                    self.chat_widget.add_error_message(err);
+                    return;
+                }
+                if removed {
+                    self.chat_widget
+                        .add_info_message(format!("Removed hook for action '{action}'."), None);
+                } else {
+                    self.chat_widget
+                        .add_info_message(format!("No hook existed for action '{action}'."), None);
+                }
+            }
+            Err(err) => {
+                self.chat_widget.add_error_message(err);
+            }
+        }
+    }
+
+    fn run_hotkey_action(&mut self, matched: hotkeys::HotkeyMatch) {
+        let Some(hook) = self.hotkeys.resolve_hook_command(&matched.action) else {
+            self.chat_widget.add_info_message(
+                format!(
+                    "Hotkey {} -> '{}' triggered, but no hook is configured.",
+                    matched.key, matched.action
+                ),
+                Some(format!(
+                    "Use `/hotkey hook {} <shell-command>` to configure it.",
+                    matched.action
+                )),
+            );
+            return;
+        };
+
+        let message = format!(
+            "Hotkey {} -> '{}' triggered. Running hook from {}.",
+            matched.key, matched.action, hook.from
+        );
+        self.chat_widget.add_info_message(message, None);
+
+        let env_vars = self.hotkey_hook_env_vars(&matched.key, &matched.action);
+        let cwd = self.config.cwd.clone();
+        let action = matched.action;
+        let key = matched.key;
+        let command = hook.command;
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = hotkeys::run_hook_command(&command, cwd.as_path(), &env_vars).await;
+            match result {
+                Ok(output) => {
+                    let mut details = vec![format!(
+                        "Hotkey action '{action}' finished (key: {key}, status: {}).",
+                        output
+                            .status_code
+                            .map_or_else(|| "unknown".to_string(), |code| code.to_string())
+                    )];
+                    if !output.stdout.is_empty() {
+                        details.push(format!(
+                            "stdout: {}",
+                            truncate_for_history(&output.stdout, 800)
+                        ));
+                    }
+                    if !output.stderr.is_empty() {
+                        details.push(format!(
+                            "stderr: {}",
+                            truncate_for_history(&output.stderr, 800)
+                        ));
+                    }
+                    let cell: Box<dyn HistoryCell> = if output.status_code.unwrap_or(1) == 0 {
+                        Box::new(history_cell::new_info_event(details.join("\n"), None))
+                    } else {
+                        Box::new(history_cell::new_error_event(details.join("\n")))
+                    };
+                    app_event_tx.send(AppEvent::InsertHistoryCell(cell));
+                }
+                Err(err) => {
+                    app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
+                        history_cell::new_error_event(format!(
+                            "Hotkey action '{action}' failed: {err}"
+                        )),
+                    )));
+                }
+            }
+        });
+    }
+
+    fn hotkey_hook_env_vars(&self, key: &str, action: &str) -> Vec<(String, String)> {
+        let mut env_vars = vec![
+            ("LCODEX_HOTKEY_KEY".to_string(), key.to_string()),
+            ("LCODEX_HOTKEY_ACTION".to_string(), action.to_string()),
+            (
+                "LCODEX_CWD".to_string(),
+                self.config.cwd.display().to_string(),
+            ),
+            (
+                "LCODEX_MODEL".to_string(),
+                self.chat_widget.current_model().to_string(),
+            ),
+        ];
+        if let Some(thread_id) = self.chat_widget.thread_id() {
+            env_vars.push(("LCODEX_THREAD_ID".to_string(), thread_id.to_string()));
+        }
+        if let Some(thread_name) = self.chat_widget.thread_name() {
+            env_vars.push(("LCODEX_THREAD_NAME".to_string(), thread_name));
+        }
+        if let Some(resume_command) = codex_core::util::resume_command(
+            self.chat_widget.thread_name().as_deref(),
+            self.chat_widget.thread_id(),
+        ) {
+            env_vars.push(("LCODEX_RESUME_COMMAND".to_string(), resume_command));
+        }
+        env_vars
+    }
+
     async fn handle_key_event(&mut self, tui: &mut tui::Tui, key_event: KeyEvent) {
+        if let Some(matched) = self.hotkeys.hotkey_match_for_event(key_event) {
+            self.run_hotkey_action(matched);
+            return;
+        }
         match key_event {
             KeyEvent {
                 code: KeyCode::Char('t'),
@@ -4449,6 +4663,7 @@ mod tests {
             CodexAuth::from_api_key("Test API Key"),
         );
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
+        let hotkeys = HotkeyManager::load(config.codex_home.as_path()).manager;
         let model = codex_core::test_support::get_model_offline(config.model.as_deref());
         let otel_manager = test_otel_manager(&config, model.as_str());
 
@@ -4470,6 +4685,7 @@ mod tests {
             deferred_history_lines: Vec::new(),
             has_emitted_history_lines: false,
             enhanced_keys_supported: false,
+            hotkeys,
             commit_anim_running: Arc::new(AtomicBool::new(false)),
             status_line_invalid_items_warned: Arc::new(AtomicBool::new(false)),
             backtrack: BacktrackState::default(),
@@ -4508,6 +4724,7 @@ mod tests {
             CodexAuth::from_api_key("Test API Key"),
         );
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
+        let hotkeys = HotkeyManager::load(config.codex_home.as_path()).manager;
         let model = codex_core::test_support::get_model_offline(config.model.as_deref());
         let otel_manager = test_otel_manager(&config, model.as_str());
 
@@ -4530,6 +4747,7 @@ mod tests {
                 deferred_history_lines: Vec::new(),
                 has_emitted_history_lines: false,
                 enhanced_keys_supported: false,
+                hotkeys,
                 commit_anim_running: Arc::new(AtomicBool::new(false)),
                 status_line_invalid_items_warned: Arc::new(AtomicBool::new(false)),
                 backtrack: BacktrackState::default(),
