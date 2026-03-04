@@ -21,6 +21,8 @@ use crate::history_cell;
 use crate::history_cell::HistoryCell;
 #[cfg(not(debug_assertions))]
 use crate::history_cell::UpdateAvailableHistoryCell;
+use crate::hotkey_native_blaze;
+use crate::hotkey_native_blaze::NativeHotkeyRequest;
 use crate::hotkeys;
 use crate::hotkeys::HotkeyControlCommand;
 use crate::hotkeys::HotkeyManager;
@@ -3629,20 +3631,53 @@ impl App {
     }
 
     fn run_hotkey_action(&mut self, matched: hotkeys::HotkeyMatch) {
-        let Some(hook) = self.hotkeys.resolve_hook_command(&matched.action) else {
-            self.chat_widget.add_info_message(
-                format!(
-                    "Hotkey {} -> '{}' triggered, but no hook is configured.",
-                    matched.key, matched.action
-                ),
-                Some(format!(
-                    "Use `/hotkey hook {} <shell-command>` to configure it.",
-                    matched.action
-                )),
-            );
-            return;
-        };
+        let native_action = hotkey_native_blaze::parse_native_action(&matched.action);
+        let hook = self.hotkeys.resolve_hook_command(&matched.action);
 
+        if let Some(native_action) = native_action
+            && hotkey_native_blaze::native_blaze_enabled()
+            && !hotkey_native_blaze::native_blaze_prefer_hook()
+        {
+            self.run_native_hotkey(matched, native_action);
+            return;
+        }
+
+        if let Some(hook) = hook {
+            self.run_hotkey_hook(matched, hook);
+            return;
+        }
+
+        if let Some(native_action) = native_action {
+            if !hotkey_native_blaze::native_blaze_enabled() {
+                self.chat_widget.add_info_message(
+                    format!(
+                        "Hotkey {} -> '{}' triggered. Native BlazeClaw integration is disabled.",
+                        matched.key, matched.action
+                    ),
+                    Some(
+                        "Set LCODEX_NATIVE_BLAZE_ENABLED=true or configure a hook via /hotkey hook."
+                            .to_string(),
+                    ),
+                );
+                return;
+            }
+            self.run_native_hotkey(matched, native_action);
+            return;
+        }
+
+        self.chat_widget.add_info_message(
+            format!(
+                "Hotkey {} -> '{}' triggered, but no hook is configured.",
+                matched.key, matched.action
+            ),
+            Some(format!(
+                "Use `/hotkey hook {} <shell-command>` to configure it.",
+                matched.action
+            )),
+        );
+    }
+
+    fn run_hotkey_hook(&mut self, matched: hotkeys::HotkeyMatch, hook: hotkeys::HookCommand) {
         let message = format!(
             "Hotkey {} -> '{}' triggered. Running hook from {}.",
             matched.key, matched.action, hook.from
@@ -3688,6 +3723,66 @@ impl App {
                     app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
                         history_cell::new_error_event(format!(
                             "Hotkey action '{action}' failed: {err}"
+                        )),
+                    )));
+                }
+            }
+        });
+    }
+
+    fn run_native_hotkey(
+        &mut self,
+        matched: hotkeys::HotkeyMatch,
+        native_action: hotkey_native_blaze::NativeBlazeAction,
+    ) {
+        self.chat_widget.add_info_message(
+            format!(
+                "Hotkey {} -> '{}' triggered. Running native BlazeClaw action.",
+                matched.key, matched.action
+            ),
+            None,
+        );
+
+        let request = NativeHotkeyRequest {
+            key: matched.key.clone(),
+            action: matched.action.clone(),
+            codex_home: self.config.codex_home.clone(),
+            cwd: self.config.cwd.as_path().to_path_buf(),
+            model: self.chat_widget.current_model().to_string(),
+            thread_id: self
+                .chat_widget
+                .thread_id()
+                .map(|thread_id| thread_id.to_string()),
+            thread_name: self.chat_widget.thread_name(),
+            resume_command: codex_core::util::resume_command(
+                self.chat_widget.thread_name().as_deref(),
+                self.chat_widget.thread_id(),
+            ),
+            rollout_path: self.chat_widget.rollout_path(),
+        };
+        let action_name = matched.action;
+        let key_name = matched.key;
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            match hotkey_native_blaze::run_native_action(request, native_action).await {
+                Ok(result) => {
+                    let mut details = vec![format!(
+                        "Hotkey action '{action_name}' finished (key: {key_name})."
+                    )];
+                    details.push(result.summary);
+                    if let Some(extra) = result.details
+                        && !extra.is_empty()
+                    {
+                        details.push(extra);
+                    }
+                    app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
+                        history_cell::new_info_event(details.join("\n"), None),
+                    )));
+                }
+                Err(err) => {
+                    app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
+                        history_cell::new_error_event(format!(
+                            "Hotkey action '{action_name}' failed: {err}"
                         )),
                     )));
                 }

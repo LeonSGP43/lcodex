@@ -57,10 +57,11 @@ lcodex -l
 `lcodex` includes a built-in hotkey manager in TUI mode.
 
 - Defaults:
-  - `Ctrl+1 -> takeover`
-  - `Ctrl+2 -> learn`
-  - `Ctrl+3 -> detach`
+  - `Ctrl+I -> takeover`
+  - `Ctrl+U -> learn`
+  - `Ctrl+O -> detach`
 - Config file: `~/.codex/lcodex/hotkeys.toml` (or `~/.lcodex/lcodex/hotkeys.toml` in `-l` mode)
+- Managed task state file (native takeover flow): `~/.codex/lcodex/managed_task.json`
 
 Manage it with slash commands:
 
@@ -75,7 +76,15 @@ Manage it with slash commands:
 /hotkey reset
 ```
 
-Hotkeys trigger action hooks by executing your shell command and passing context env vars:
+By default, these actions are handled natively inside `lcodex` (no external scripts required):
+
+- `takeover`: create a `requiresHuman=true` addnew task for supervisor takeover and sync current rollout to session summary
+- `learn`: upload current rollout raw content to `/api/sessions/{id}/summary`
+- `detach`: send `pause` signal to the managed task
+- `done`: mark managed task as `done`
+- while managed: lcodex keeps running locally in TUI and streams new user/assistant messages into task progress events for supervisor monitoring
+
+Hotkey hooks are still supported as an override path. Hook commands receive context env vars:
 
 - `LCODEX_HOTKEY_KEY`
 - `LCODEX_HOTKEY_ACTION`
@@ -89,6 +98,11 @@ You can also provide hook commands via env:
 
 - `LCODEX_HOTKEY_ACTION_<ACTION>`
 - Compatibility vars: `LCODEX_TAKEOVER_CMD`, `LCODEX_LEARN_CMD`, `LCODEX_DETACH_CMD`
+
+Native integration can be toggled with:
+
+- `LCODEX_NATIVE_BLAZE_ENABLED=true|false` (default: `true`)
+- `LCODEX_NATIVE_BLAZE_PREFER_HOOK=true|false` (default: `false`; when `true`, hook commands take precedence over native actions)
 
 ## New Device Onboarding
 
@@ -128,22 +142,19 @@ SH
 chmod +x "$HOME/bin/lcodex"
 ```
 
-3. Configure hotkey hooks once (file-based, no per-session setup):
+3. Configure hotkeys once (file-based, no per-session setup):
 Path: `~/.codex/lcodex/hotkeys.toml`
 
 ```toml
 version = 1
 
 [bindings]
-"ctrl+1" = "takeover"
-"ctrl+2" = "learn"
-"ctrl+3" = "detach"
-
-[actions]
-takeover = "bash ${BLAZECLAW_ROOT:-$HOME/Desktop/LeonProjects/BlazeClaw}/lc-manager/scripts/lcodex_hook_takeover.sh"
-learn = "bash ${BLAZECLAW_ROOT:-$HOME/Desktop/LeonProjects/BlazeClaw}/lc-manager/scripts/lcodex_hook_learn.sh"
-detach = "bash ${BLAZECLAW_ROOT:-$HOME/Desktop/LeonProjects/BlazeClaw}/lc-manager/scripts/lcodex_hook_detach.sh"
+"ctrl+i" = "takeover"
+"ctrl+u" = "learn"
+"ctrl+o" = "detach"
 ```
+
+Optional: if you want custom shell behavior, add `[actions]` entries for specific actions.
 
 4. Verify inside TUI:
 
@@ -155,7 +166,7 @@ detach = "bash ${BLAZECLAW_ROOT:-$HOME/Desktop/LeonProjects/BlazeClaw}/lc-manage
 - `BLAZECLAW_BASE_URL`
 - `BLAZECLAW_ADMIN_TOKEN`
 - Optional only: advanced tuning vars (`BLAZECLAW_ADDNEW_*`, `BLAZECLAW_LEARN_*`).
-  In lcodex hotkey mode, session identity is auto-derived from `LCODEX_THREAD_ID`.
+  In native lcodex hotkey mode, session identity is auto-derived from `LCODEX_THREAD_ID`.
 
 If your shell uses env-prefix command `c`, run as:
 
@@ -164,10 +175,24 @@ c lcodex
 ```
 
 Hotkeys then work directly inside TUI:
-- `Ctrl+1`: takeover (auto handoff to master with session context)
-- `Ctrl+2`: learn sync (default raw transcript upload; master side parses)
-- `Ctrl+3`: detach/unmanage
+- `Ctrl+I`: takeover (supervisor acceptance/interaction handoff; no auto execution claim)
+- `Ctrl+U`: learn sync (uploads raw rollout text)
+- `Ctrl+O`: detach/unmanage (pause signal)
 - Worker identity is auto-tagged with user/host/project/thread, so same-project parallel workers are uniquely identifiable.
+- Multiple lcodex workers (different projects/terminals/devices) can mount to one supervisor with the same `BLAZECLAW_BASE_URL` + token.
+- When managed, lcodex emits real-time callbacks: TurnComplete -> `callbacks/completed` (task -> `review_pending`); approval/user-input events -> `callbacks/need-human` (task -> `waiting_human`).
+
+To inspect managed worker conversation/status from supervisor:
+
+```bash
+# list queue/active
+curl "$BLAZECLAW_BASE_URL/api/tasks/queue?limit=50"
+
+# per-task event stream (includes task.callback_progress conversation mirror)
+curl "$BLAZECLAW_BASE_URL/api/tasks/<task_id>/events?limit=200"
+```
+
+If you customized `~/.codex/lcodex/hotkeys.toml` (for example `Ctrl+I/U/O`), your custom bindings take precedence.
 
 ## Upstream Sync Strategy
 

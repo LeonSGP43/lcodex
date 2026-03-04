@@ -83,6 +83,7 @@ mod file_search;
 mod frames;
 mod get_git_diff;
 mod history_cell;
+mod hotkey_native_blaze;
 mod hotkeys;
 pub mod insert_history;
 mod key_hint;

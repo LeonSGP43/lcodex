@@ -296,7 +296,7 @@ impl HotkeyManager {
     }
 
     pub(crate) fn help_text() -> &'static str {
-        "Hotkey commands:\n  /hotkey\n  /hotkey list\n  /hotkey bind <key> <action>\n  /hotkey unbind <key>\n  /hotkey hook <action> <shell-command>\n  /hotkey unhook <action>\n  /hotkey reload\n  /hotkey reset\nExamples:\n  /hotkey bind ctrl+1 takeover\n  /hotkey bind ctrl+2 learn\n  /hotkey bind ctrl+3 detach\n  /hotkey hook takeover ./scripts/handoff.sh\n  /hotkey hook learn ./scripts/learn.sh"
+        "Hotkey commands:\n  /hotkey\n  /hotkey list\n  /hotkey bind <key> <action>\n  /hotkey unbind <key>\n  /hotkey hook <action> <shell-command>\n  /hotkey unhook <action>\n  /hotkey reload\n  /hotkey reset\nExamples:\n  /hotkey bind ctrl+i takeover\n  /hotkey bind ctrl+u learn\n  /hotkey bind ctrl+o detach\n  /hotkey hook takeover ./scripts/handoff.sh\n  /hotkey hook learn ./scripts/learn.sh"
     }
 
     fn with_defaults(path: PathBuf) -> Self {
@@ -340,7 +340,7 @@ impl KeyChord {
                         ));
                     }
                     key_token = Some(parse_key_token(part).ok_or_else(|| {
-                        format!("unsupported key token '{part}' (example: ctrl+1, ctrl+2, ctrl+3)")
+                        format!("unsupported key token '{part}' (example: ctrl+i, ctrl+u, ctrl+o)")
                     })?);
                 }
             }
@@ -611,15 +611,15 @@ fn parse_key_token(token: &str) -> Option<KeyToken> {
 fn default_bindings() -> HashMap<KeyChord, String> {
     let mut bindings = HashMap::new();
     bindings.insert(
-        KeyChord::parse("ctrl+1").expect("valid default key"),
+        KeyChord::parse("ctrl+i").expect("valid default key"),
         "takeover".to_string(),
     );
     bindings.insert(
-        KeyChord::parse("ctrl+2").expect("valid default key"),
+        KeyChord::parse("ctrl+u").expect("valid default key"),
         "learn".to_string(),
     );
     bindings.insert(
-        KeyChord::parse("ctrl+3").expect("valid default key"),
+        KeyChord::parse("ctrl+o").expect("valid default key"),
         "detach".to_string(),
     );
     bindings
@@ -678,8 +678,8 @@ mod tests {
 
     #[test]
     fn key_chord_round_trip() {
-        let parsed = KeyChord::parse("ctrl+2").expect("parse ctrl+2");
-        assert_eq!(parsed.to_string(), "ctrl+2");
+        let parsed = KeyChord::parse("ctrl+u").expect("parse ctrl+u");
+        assert_eq!(parsed.to_string(), "ctrl+u");
     }
 
     #[test]
@@ -717,7 +717,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let loaded = HotkeyManager::load(dir.path());
         assert!(loaded.warnings.is_empty());
-        let event = KeyEvent::new(KeyCode::Char('1'), KeyModifiers::CONTROL);
+        let event = KeyEvent::new(KeyCode::Char('i'), KeyModifiers::CONTROL);
         let matched = loaded
             .manager
             .hotkey_match_for_event(event)

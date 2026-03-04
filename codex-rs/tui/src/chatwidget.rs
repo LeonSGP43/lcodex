@@ -48,6 +48,7 @@ use crate::status::format_tokens_compact;
 use crate::status::rate_limit_snapshot_display_for_limit;
 use crate::text_formatting::proper_join;
 use crate::version::CODEX_CLI_VERSION;
+use crate::hotkey_native_blaze;
 use codex_app_server_protocol::ConfigLayerSource;
 use codex_backend_client::Client as BackendClient;
 use codex_chatgpt::connectors;
@@ -1494,9 +1495,12 @@ impl ChatWidget {
         // If there is a queued user message, send exactly one now to begin the next turn.
         self.maybe_send_next_queued_input();
         // Emit a notification when the turn completes (suppressed if focused).
-        self.notify(Notification::AgentTurnComplete {
-            response: last_agent_message.unwrap_or_default(),
-        });
+        let response = last_agent_message.clone().unwrap_or_default();
+        self.notify(Notification::AgentTurnComplete { response });
+
+        if !from_replay {
+            self.emit_blaze_task_complete(last_agent_message);
+        }
 
         self.maybe_show_pending_rate_limit_prompt();
     }
@@ -1964,6 +1968,40 @@ impl ChatWidget {
         );
     }
 
+
+    fn emit_blaze_need_human(&self, question: String, risk_level: &str, threat_detail: Option<String>) {
+        let codex_home = self.config.codex_home.clone();
+        let thread_id = self.thread_id.as_ref().map(|id| id.to_string());
+        let cwd = self.config.cwd.clone();
+        let risk = risk_level.to_string();
+        tokio::spawn(async move {
+            let _ = hotkey_native_blaze::notify_managed_need_human(
+                codex_home,
+                thread_id,
+                cwd,
+                question,
+                risk,
+                threat_detail,
+            )
+            .await;
+        });
+    }
+
+    fn emit_blaze_task_complete(&self, output: Option<String>) {
+        let codex_home = self.config.codex_home.clone();
+        let thread_id = self.thread_id.as_ref().map(|id| id.to_string());
+        let cwd = self.config.cwd.clone();
+        tokio::spawn(async move {
+            let _ = hotkey_native_blaze::notify_managed_task_completed(
+                codex_home,
+                thread_id,
+                cwd,
+                output,
+            )
+            .await;
+        });
+    }
+
     fn on_plan_update(&mut self, update: UpdatePlanArgs) {
         self.saw_plan_update_this_turn = true;
         self.add_to_history(history_cell::new_plan_update(update));
@@ -1971,6 +2009,15 @@ impl ChatWidget {
 
     fn on_exec_approval_request(&mut self, _id: String, ev: ExecApprovalRequestEvent) {
         let ev2 = ev.clone();
+        let command = shlex::try_join(ev.command.iter().map(String::as_str))
+            .unwrap_or_else(|_| ev.command.join(" ")).to_string();
+        let reason = ev.reason.clone().unwrap_or_default();
+        let question = if reason.trim().is_empty() {
+            format!("Exec approval requested: {}", command)
+        } else {
+            format!("Exec approval requested: {}. Reason: {}", command, reason)
+        };
+        self.emit_blaze_need_human(question, "high", None);
         self.defer_or_handle(
             |q| q.push_exec_approval(ev),
             |s| s.handle_exec_approval_now(ev2),
@@ -1979,6 +2026,10 @@ impl ChatWidget {
 
     fn on_apply_patch_approval_request(&mut self, _id: String, ev: ApplyPatchApprovalRequestEvent) {
         let ev2 = ev.clone();
+        let changes_count = ev.changes.len();
+        let question = format!("Apply patch approval requested ({} files).", changes_count);
+        let detail = ev.reason.clone();
+        self.emit_blaze_need_human(question, "medium", detail);
         self.defer_or_handle(
             |q| q.push_apply_patch_approval(ev),
             |s| s.handle_apply_patch_approval_now(ev2),
@@ -1987,6 +2038,8 @@ impl ChatWidget {
 
     fn on_elicitation_request(&mut self, ev: ElicitationRequestEvent) {
         let ev2 = ev.clone();
+        let question = format!("Elicitation requested by {}: {}", ev.server_name, ev.message);
+        self.emit_blaze_need_human(question, "low", None);
         self.defer_or_handle(
             |q| q.push_elicitation(ev),
             |s| s.handle_elicitation_request_now(ev2),
@@ -1995,6 +2048,24 @@ impl ChatWidget {
 
     fn on_request_user_input(&mut self, ev: RequestUserInputEvent) {
         let ev2 = ev.clone();
+        let question_count = ev.questions.len();
+        let summary = if question_count == 0 {
+            "Request user input (no questions provided)".to_string()
+        } else {
+            let headers = ev
+                .questions
+                .iter()
+                .filter_map(|q| (!q.header.trim().is_empty()).then_some(q.header.as_str()))
+                .take(3)
+                .collect::<Vec<_>>()
+                .join(", " );
+            if headers.is_empty() {
+                format!("Request user input ({} questions)", question_count)
+            } else {
+                format!("Request user input ({}): {}", question_count, headers)
+            }
+        };
+        self.emit_blaze_need_human(summary, "medium", None);
         self.defer_or_handle(
             |q| q.push_user_input(ev),
             |s| s.handle_request_user_input_now(ev2),
