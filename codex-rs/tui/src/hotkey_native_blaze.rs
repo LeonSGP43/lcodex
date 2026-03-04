@@ -34,6 +34,7 @@ const MANAGED_SYNC_POLL_INTERVAL_SECS: u64 = 2;
 const MANAGED_SYNC_MAX_MESSAGE_CHARS: usize = 1800;
 const NEED_HUMAN_MAX_QUESTION_CHARS: usize = 800;
 const NEED_HUMAN_MAX_DETAIL_CHARS: usize = 1600;
+const WORKER_HEARTBEAT_TICKS: u32 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeBlazeAction {
@@ -765,7 +766,9 @@ async fn run_managed_streamer_loop(
 
     let mut sent_line_count: usize = 0;
     let mut idle_ticks: u32 = 0;
+    let mut heartbeat_ticks: u32 = 0;
     let mut completion_sent: bool = false;
+    let _ = notify_worker_heartbeat(&client, &config, &context).await;
     loop {
         if stop.load(Ordering::SeqCst) {
             return;
@@ -850,6 +853,12 @@ async fn run_managed_streamer_loop(
             let path = format!("/api/tasks/{task_id}/callbacks/progress");
             let _ = client.post_json(path.as_str(), heartbeat).await;
             idle_ticks = 0;
+        }
+
+        heartbeat_ticks = heartbeat_ticks.saturating_add(1);
+        if heartbeat_ticks >= WORKER_HEARTBEAT_TICKS {
+            let _ = notify_worker_heartbeat(&client, &config, &context).await;
+            heartbeat_ticks = 0;
         }
 
         sleep(Duration::from_secs(MANAGED_SYNC_POLL_INTERVAL_SECS)).await;
@@ -938,6 +947,21 @@ async fn notify_task_completed(
     });
     let path = format!("/api/tasks/{task_id}/callbacks/completed");
     client.post_json(path.as_str(), payload).await?;
+    Ok(())
+}
+
+async fn notify_worker_heartbeat(
+    client: &BlazeClient,
+    config: &BlazeConfig,
+    context: &SessionContext,
+) -> Result<(), String> {
+    let payload = json!({
+        "workerId": context.worker_id,
+        "workerType": config.worker_type,
+        "status": "online",
+        "currentLoad": 0
+    });
+    client.post_json("/api/workers/heartbeat", payload).await?;
     Ok(())
 }
 
